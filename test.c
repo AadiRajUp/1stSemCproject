@@ -4,7 +4,8 @@
 #include<windows.h>
 #include<string.h>
 #include<ctype.h>
-
+#define LENGTH 30
+#define WIDTH 50
 //the path where the datbases and tables are being created/ worked on
 const char _defaultPath[]="F:\\aadikofolder\\";
 char workingPath[50];
@@ -17,16 +18,22 @@ char* tokenizer(char* );
 //
 //
 //The query parser is a function where tokens are parsed i.e. understood and actions occur
-int queryParser(char (*p)[30]);
+int queryParser(char (*p)[WIDTH]);
 //THE FUNCTIONS UNDER QUERY PARSER WILL BE LISTED BELOW
 //
 //THE CREATOR FUNCTION HANDELS THE CREATION COMMANDS WHICH CREATE A FILE
-    int _creator(char (*p)[30]);
+    int _creator(char (*p)[WIDTH]);
 //
+        int handleTable(char (*p)[WIDTH]);
+//
+//THE columnNormalizer is a function that removes all the unnecesary parts from a program
+//
+//
+            char* _columnNormalizer(char p[],int);
 //THE DROPPER IS A FUNCTION THAT HANDELS THE DROP COMMANDS
 //
 
-    int _dropper(char (*p)[30]);
+    int _dropper(char (*p)[WIDTH]);
 
 
 //_checkDB is a function which checks if a database is included or not
@@ -40,7 +47,7 @@ int queryParser(char (*p)[30]);
 //_use is a function  which is used to
 //
 
-    int _use(char p[30]){
+    int _use(char p[WIDTH]){
     if (strcmp(workingPath,_defaultPath)>=0){
         strcpy(workingPath,_defaultPath);
         strcat(workingPath,p);
@@ -63,9 +70,9 @@ int queryParser(char (*p)[30]);
 //THE END FUNCTION IS A FUNCTION WHICH CHECKS IF THE GIVEN query ENDS AFTER A TERM OR NOT
 //
 
-    int _end(char (*p)[30],int pos){
-    int _endI;
-    for(_endI=pos;_endI<30;_endI++){
+    int _end(char (*p)[WIDTH],int pos){
+    int _endI,i;
+    for(_endI=pos;_endI<LENGTH;_endI++){
         if(p[_endI][0]!='\0'){
             printf("Error Unexpected %s\n",p[_endI]);
             return _endI;
@@ -80,6 +87,8 @@ int queryParser(char (*p)[30]);
 //
 // AABA HUNXA LOW LEVEL PROGRAMMING OOH SHIIIII
 //
+
+//int char string
 struct aboutColumns{
 char name[30];
 char dataType[10];
@@ -88,26 +97,8 @@ void *value;
 struct aboutTable{
 char name[30];
 int fieldCount;
-struct aboutColumns *pColumns;
+struct aboutColumns *pColumns;//pColums[feidCOunt];
 };
-
-
-
-
-int handleTable(char (*p)[30]){
-
-
-
-
-}
-
-
-
-//
-//
-//
-//
-//
 
 
 
@@ -136,7 +127,7 @@ char* tokenizer(char str[]){
 //  THE TOKENIZER IS A FUNCTION WHICH BREAKS DOWN A 1 DIMENTIONAL QUERY INTO A 2D ARRAY IN WICH
 //  EACH ROW CONTAINS EVERY DIFFERENT WORD
 //
-    static char breakdown[30][30];//STATIC IS USED AS ONLY STATIC VARIABLES CREATED INSIDE FUNCTION CAN BE PASSED INTO ANOTHER FUNCTION
+    static char breakdown[LENGTH][WIDTH];//STATIC IS USED AS ONLY STATIC VARIABLES CREATED INSIDE FUNCTION CAN BE PASSED INTO ANOTHER FUNCTION
     // THE main() FUNCTION IS AN EXCEPTION AS OTHER FUNCTIONS ACT AS SUB FUNCTIONS OF IT IDK HOW THO XD
     memset(breakdown, 0, sizeof(breakdown));
     int i,j,k;
@@ -159,7 +150,7 @@ char* tokenizer(char str[]){
 }
 
 
-int queryParser(char (*p)[30]){
+int queryParser(char (*p)[WIDTH]){
     int i,j,k;//WHILE THE WORD QUERYPARSER MAY SOUND COOL IT'S JUST A BUNCH OF IFS AND ELSES
     i=0;
 
@@ -191,7 +182,7 @@ int queryParser(char (*p)[30]){
     return -1;
 
 }
-int _creator(char (*p)[30]){
+int _creator(char (*p)[WIDTH]){
 //CREATOR JUST HANDLES CREATE COMMANDS
 //1) DATABASE
 //2) TABLE
@@ -236,12 +227,16 @@ int _creator(char (*p)[30]){
         strcat(runningPath,".txt");
         if(fopen(runningPath,"r")){
             printf("ERROR! TABLE ALREADY EXISTS!\n");
+            fclose(_creator_f);
             return;
         }
 
         _creator_f = fopen(runningPath,"w");
         if(_creator_f){
            printf("TABLE %s successfully Created\n", p[2]);
+                       fclose(_creator_f);//THIS LINE NEEDS TO BE REMOVED
+
+           handleTable(p);
            }
         else{
             printf("An error Occurred! TABLE could not be created\n");
@@ -256,7 +251,7 @@ int _creator(char (*p)[30]){
 
 
 
-int _dropper(char (*p)[30]){
+int _dropper(char (*p)[WIDTH]){
     int _droppertemp=_end(p,3);
     strupr(p[1]);
 //    printf("%d\n",_droppertemp);
@@ -335,6 +330,96 @@ int _dropper(char (*p)[30]){
 
 
 }
+
+int handleTable(char (*p)[WIDTH]){
+char tableStructure[100];
+int handleTable_temp = 0 , handleTable_i = 3,handleTable_j = 0,handleTable_k = 0,handleTable_switch=0;//Switch flips ensuring everything between '(' and ')' is read
+int handleTable_countColumns=1;
+memset(tableStructure,'\0',100);
+while(p[handleTable_i][0]!='\0'){
+if(p[handleTable_i][handleTable_j]=='\0'){
+        handleTable_i++;
+        handleTable_j=0;
+    }
+
+    if (p[handleTable_i][handleTable_j]=='(' || p[handleTable_i][handleTable_j]==';'){
+        handleTable_switch=!handleTable_switch;
+    }//This here flips the switch on the condition that either ( or ; is detected and the switch is on whilst reading between the columns ; was used for uniformity as closing braces also needed to be implimented
+    if(p[handleTable_i][handleTable_j]==','){
+        handleTable_countColumns++;
+    }
+//printf("%d  \n",handleTable_switch);
+    if(handleTable_switch){
+        tableStructure[handleTable_k]=p[handleTable_i][handleTable_j];
+//        printf("%c",tableStructure[handleTable_k]);
+    handleTable_k++;
+    }
+
+    handleTable_j++;
+    }
+printf("\nThe inside string is %s  %d\n",tableStructure,handleTable_countColumns);
+char (*p1)[30]= _columnNormalizer(tableStructure,handleTable_countColumns);
+int i;
+for(i=0;i<handleTable_countColumns*2;i++){
+    printf("%s\n",p1[i]);
+}
+
+}
+
+char* _columnNormalizer(char p[], int columnCount){
+
+    //  THE TOKENIZER IS A FUNCTION WHICH BREAKS DOWN A 1 DIMENTIONAL QUERY INTO A 2D ARRAY IN WICH
+//  EACH ROW CONTAINS EVERY DIFFERENT WORD
+//
+printf("%s",p);
+    static char breakdown1[30][30];//STATIC IS USED AS ONLY STATIC VARIABLES CREATED INSIDE FUNCTION CAN BE PASSED INTO ANOTHER FUNCTION
+    // THE main() FUNCTION IS AN EXCEPTION AS OTHER FUNCTIONS ACT AS SUB FUNCTIONS OF IT IDK HOW THO XD
+    memset(breakdown1, 0, sizeof(breakdown1));
+    int i=0,j=-1,k=0;//as in 1st iteration j will increment
+
+
+while(p[i]!='\0'){
+        if(p[i]=='('||p[i]==':'||p[i]==','){
+                i++;
+        j++;
+        k=0;
+            continue;
+        }
+        if(p[i]==')'){
+            break;
+        }
+        breakdown1[j][k]=p[i];
+        i++;
+        k++;
+}
+        return breakdown1;
+    }
+
+
+
+
+
+
+////int _columnNormalizer_i,_columnNormalizer_k=0,_columnNormalizer_switch=0;
+////aboutTable.fieldCount=columnCount;
+////aboutTable.pColumns = (struct aboutColumns*) calloc(aboutTable.fieldCount,sizeof(struct aboutColumns));
+////for(_columnNormalizer_i=0;_columnNormalizer_i<strlen(p);i++){
+////    if(p[_columnNormalizer_i]=='('||p[_columnNormalizer_i]==')'){
+////        continue;
+////    }
+////    if(p[_columnNormalizer_i]==':'){
+////        _columnNormalizer_switch+=1;
+////        continue;
+////    }
+////    if(p[_columnNormalizer_i]==','){
+////        _columnNormalizer_switch-=1;
+////        continue;
+////    }
+////    aboutTable.pColumns[k]
+////}
+////
+
+
 
 
 //FILE *_creator_f;
