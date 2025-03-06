@@ -361,7 +361,9 @@ printf("\nThe inside string is %s  %d\n",tableStructure,handleTable_countColumns
 char (*p1)[30]= _columnNormalizer(tableStructure,handleTable_countColumns);
 int i;
 for(i=0;i<handleTable_countColumns*2;i++){
-    printf("%s\n",p1[i]);
+    if(i%2==0){
+
+    }
 }
 
 }
