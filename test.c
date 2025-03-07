@@ -35,14 +35,11 @@ int queryParser(char (*p)[WIDTH]);
 
     int _dropper(char (*p)[WIDTH]);
 
-
-//_checkDB is a function which checks if a database is included or not
+//_insert is a function which insert the data into any given table
 //
-    int _checkDB(){
-    if(strcmp(workingPath,"F:\\aadikofolder\\")==0) return 0;
-    return 1;
-    }
+//
 
+    int _inserter(char (*p)[WIDTH]);
 //
 //_use is a function  which is used to
 //
@@ -64,6 +61,15 @@ int queryParser(char (*p)[WIDTH]);
         printf("An unforseen error occured, please contact the developer");
     exit(-1);
     }
+    }
+
+
+
+//_checkDB is a function which checks if a database is included or not
+//
+    int _checkDB(){
+    if(strcmp(workingPath,"F:\\aadikofolder\\")==0) return 0;
+    return 1;
     }
 
 //
@@ -168,13 +174,17 @@ int queryParser(char (*p)[WIDTH]){
         if(!_end(p,2)){
         _use(&p[1]);
         return 0;
-    }
-    return -1;
+        }
+        return -1;
     }
 
 
     if (strcmp(strupr(p[0]),"DROP")==0){
         _dropper(p);
+        return 0;
+    }
+    if (strcmp(strupr(p[0]),"INSERT")==0){
+        _inserter(p);
         return 0;
     }
 
@@ -301,7 +311,8 @@ int _dropper(char (*p)[WIDTH]){
         }
 
         FILE *_creator_f;
-        char runningPath[50];
+        char runningPath[50]; //for txt table
+        char runningPath2[50]; //for metadata
         strcpy(runningPath,workingPath);
         strcat(runningPath,"\\");
         strcat(runningPath,p[2]);
@@ -309,13 +320,16 @@ int _dropper(char (*p)[WIDTH]){
         _creator_f=fopen(runningPath,"r");
         if(_creator_f){
             fclose(_creator_f);
-            if(remove(runningPath)==0){
+            strcpy(runningPath2,workingPath);
+            strcat(runningPath2,"\\");
+            strcat(runningPath2,p[2]);
+            strcat(runningPath2,".meta");
+            if(remove(runningPath)==0&&remove(runningPath2)==0){
                 printf("TABLE SUCESSFULLY DROPPED\n");
                 return 0;
             }
             else{
                     printf("%s\n",runningPath);
-
                 printf("ERROR! Table couldn't be dropped : %lu\n",GetLastError());
             }
         }
@@ -357,15 +371,44 @@ if(p[handleTable_i][handleTable_j]=='\0'){
 
     handleTable_j++;
     }
-printf("\nThe inside string is %s  %d\n",tableStructure,handleTable_countColumns);
+//printf("\nThe inside string is %s  %d\n",tableStructure,handleTable_countColumns);
 char (*p1)[30]= _columnNormalizer(tableStructure,handleTable_countColumns);
 int i;
+
+struct aboutTable _workingTable;
+strcpy(_workingTable.name, p[2]);
+_workingTable.fieldCount=handleTable_countColumns;
+_workingTable.pColumns=(struct aboutColumns *)calloc(sizeof(struct aboutColumns),_workingTable.fieldCount);
 for(i=0;i<handleTable_countColumns*2;i++){
     if(i%2==0){
-
+        strcpy(_workingTable.pColumns[i/2].name,p1[i]);
+    }
+    else {
+        strcpy(_workingTable.pColumns[(i-1)/2].dataType,p1[i]);
     }
 }
-
+printf("\n\n\nThe Defined table is as follows:\n\n\n");
+for(i=0;i<handleTable_countColumns;i++){
+    printf("|\t%s\t|",_workingTable.pColumns[i].name);
+}
+printf("\n\n");
+for(i=0;i<handleTable_countColumns;i++){
+    printf("|\t%s\t|",_workingTable.pColumns[i].dataType);
+}
+printf("\n");
+char runningPath[50];
+strcpy(runningPath,workingPath);
+strcat(runningPath,"\\");
+strcat(runningPath,p[2]);
+strcat(runningPath,".meta");
+FILE *metaFileForTable;
+metaFileForTable=fopen(runningPath,"w");
+fprintf(metaFileForTable,"fieldCount=%d\n",_workingTable.fieldCount);
+fprintf(metaFileForTable,"rowCount=%d\n",0);
+for(i=0;i<handleTable_countColumns*2;i+=2){
+    fprintf(metaFileForTable,"%s:%s\n",p1[i],p1[i+1]);
+}
+fclose(metaFileForTable);
 }
 
 char* _columnNormalizer(char p[], int columnCount){
@@ -373,13 +416,12 @@ char* _columnNormalizer(char p[], int columnCount){
     //  THE TOKENIZER IS A FUNCTION WHICH BREAKS DOWN A 1 DIMENTIONAL QUERY INTO A 2D ARRAY IN WICH
 //  EACH ROW CONTAINS EVERY DIFFERENT WORD
 //
-printf("%s",p);
     static char breakdown1[30][30];//STATIC IS USED AS ONLY STATIC VARIABLES CREATED INSIDE FUNCTION CAN BE PASSED INTO ANOTHER FUNCTION
     // THE main() FUNCTION IS AN EXCEPTION AS OTHER FUNCTIONS ACT AS SUB FUNCTIONS OF IT IDK HOW THO XD
     memset(breakdown1, 0, sizeof(breakdown1));
     int i=0,j=-1,k=0;//as in 1st iteration j will increment
 
-
+//(name:str,address:str,roll:int);
 while(p[i]!='\0'){
         if(p[i]=='('||p[i]==':'||p[i]==','){
                 i++;
@@ -394,11 +436,66 @@ while(p[i]!='\0'){
         i++;
         k++;
 }
-        return breakdown1;
+        if(j/2!=columnCount){
+        return breakdown1;}
+        else{
+            printf("Error bhayo hai :(\n");
+            return NULL;
+        }
+    }
+
+
+int _inserter(char (*p)[WIDTH]){
+//DUMMY QUERY
+// INSERT aadi (name,address,roll)
+    if(_checkDB()){
+        printf("Please open a database First!\n");
+        return -1;
+    }
+    FILE *_selectedTable;
+    char runningPath[50];
+    strcpy(runningPath,workingPath);
+    strcat(runningPath,"\\");
+    strcat(runningPath,p[1]);
+    strcat(runningPath,".txt");
+    _selectedTable=fopen(runningPath,"r");
+    if(_selectedTable==NULL){
+        printf("ERROR! The Table doesn't exist %d",GetLastError());
+        return -1;
+    }
+    else{
+        fclose(_selectedTable);
+    }
+
+    //ALL of this was done to check if the given table exist or not
+    int i,j,countInserts=0;
+    for(i=2;p[i][0]!='\0';i++){//counts open braces to learn about the number of inputs
+        for(j=0;p[i][j]!='\0';j++){
+            if(p[i][j]=='(') countInserts++;
+        }
     }
 
 
 
+    i=2;
+    j=0;
+    char *p1;
+    while(p[i][0]!='\0'){
+        if(_columnNormalizer(p[i],aboutTable.fieldCount)==NULL) {
+            printf("Error Number of fields do not match!\n");
+            return -1;
+        }
+        (*p1)[30]=_columnNormalizer(p[i],aboutTable.fieldCount);
+        i++;
+    for(j=0;j<aboutTable.fieldCount;j++){
+        for(k=0;k<countInserts;k++){
+            aboutTable.pColumns[j].value=
+        }
+    }
+    }
+
+    //BHAYO MERO DIMAG NAI CHALENA AABA BHOLI GARXU 'Face with Symbols on Mouth' emoji
+}
 
 
 
