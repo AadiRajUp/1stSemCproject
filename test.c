@@ -4,6 +4,7 @@
 #include<windows.h>
 #include<string.h>
 #include<ctype.h>
+#include <direct.h>
 #define LENGTH 30
 #define WIDTH 50
 //the path where the datbases and tables are being created/ worked on
@@ -41,8 +42,12 @@ int queryParser(char (*p)[WIDTH]);
 
     int _inserter(char (*p)[WIDTH]);
 //
+
+int _selector(char (*p)[WIDTH]);
 //_use is a function  which is used to
 //
+
+int _deleter(char (*p)[WIDTH]);
 
     int _use(char p[WIDTH]){
     if (strcmp(workingPath,_defaultPath)>=0){
@@ -187,6 +192,14 @@ int queryParser(char (*p)[WIDTH]){
         _inserter(p);
         return 0;
     }
+    if (strcmp(strupr(p[0]),"SELECT")==0){
+        _selector(p);
+        return 0;
+    }
+    if (strcmp(strupr(p[0]), "DELETE") == 0) {
+    _deleter(p);
+    return 0;
+}
 
     printf("UNEXPECTED %s\n",p[0]);
     return -1;
@@ -444,94 +457,391 @@ while(p[i]!='\0'){
         }
     }
 
-
-int _inserter(char (*p)[WIDTH]){
-//DUMMY QUERY
-// INSERT aadi (name,address,roll)
-    if(_checkDB()){
-        printf("Please open a database First!\n");
+int _inserter(char (*p)[WIDTH]) {
+    if (!_checkDB()) {
+        printf("Please open a database first!\n");
         return -1;
     }
-    FILE *_selectedTable;
-    char runningPath[50];
-    strcpy(runningPath,workingPath);
-    strcat(runningPath,"\\");
-    strcat(runningPath,p[1]);
-    strcat(runningPath,".txt");
-    _selectedTable=fopen(runningPath,"r");
-    if(_selectedTable==NULL){
-        printf("ERROR! The Table doesn't exist %d",GetLastError());
-        return -1;
-    }
-    else{
-        fclose(_selectedTable);
+
+    // Step 1: Extract table name
+    char tableName[30];
+    strcpy(tableName, p[1]); // p[1] is the table name
+
+    // Step 2: Extract values from the query
+    char values[100] = {0}; // Buffer to hold values
+    int i = 2; // Start from p[2] (the token after the table name)
+
+    // Concatenate all tokens after the table name
+    while (p[i][0] != '\0') {
+        strcat(values, p[i]);
+        strcat(values, " "); // Add space between tokens
+        i++;
     }
 
-    //ALL of this was done to check if the given table exist or not
-    int i,j,countInserts=0;
-    for(i=2;p[i][0]!='\0';i++){//counts open braces to learn about the number of inputs
-        for(j=0;p[i][j]!='\0';j++){
-            if(p[i][j]=='(') countInserts++;
+    // Remove the outer parentheses (if they exist)
+    char* start = strchr(values, '('); // Find the opening '('
+    char* end = strchr(values, ')');   // Find the closing ')'
+    if (start && end) {
+        *end = '\0'; // Truncate at the closing ')'
+        strcpy(values, start + 1); // Copy everything inside the parentheses
+    } else {
+        // If no parentheses, assume the entire string is values
+        strcpy(values, p[2]);
+    }
+
+    // Step 3: Read the table's metadata
+    char metaPath[50];
+    snprintf(metaPath, sizeof(metaPath), "%s\\%s.meta", workingPath, tableName);
+
+    FILE* metaFile = fopen(metaPath, "r");
+    if (!metaFile) {
+        printf("Error: Table '%s' does not exist.\n", tableName);
+        return -1;
+    }
+
+    // Read metadata
+    int fieldCount = 0;
+    char columnNames[30][30];
+    char columnTypes[30][10];
+    char line[100];
+
+    while (fgets(line, sizeof(line), metaFile)) {
+        if (strstr(line, "fieldCount=")) {
+            sscanf(line, "fieldCount=%d", &fieldCount);
+            break;
+        } else if (strchr(line, ':')) {
+            char* colon = strchr(line, ':');
+            *colon = '\0'; // Split into name and type
+            strcpy(columnNames[fieldCount], line);
+            strcpy(columnTypes[fieldCount], colon + 1);
+            fieldCount++;
+        }
+    }
+    fclose(metaFile);
+
+    // Step 4: Validate the number of values
+     char* tokens[30] = {0}; // Array to hold parsed values
+    int valueCount = 0;
+
+    char* token = strtok(values, ",");
+    while (token && valueCount < 30) {
+        // Trim leading/trailing whitespace
+        while (*token == ' ') token++;
+        char* end = token + strlen(token) - 1;
+        while (*end == ' ') end--;
+        *(end + 1) = '\0';
+
+        tokens[valueCount++] = token; // Store the token
+        token = strtok(NULL, ",");
+    }
+
+    // Validate value count against field count
+    if (valueCount != fieldCount) {
+        printf("Error: Expected %d values, got %d.\n", fieldCount, valueCount);
+        return -1;
+    }
+
+
+
+    // Step 5: Open the table's data file
+    char dataPath[50];
+    snprintf(dataPath, sizeof(dataPath), "%s\\%s.txt", workingPath, tableName);
+
+   // Step 5: Write the stored tokens to the file
+    FILE* dataFile = fopen(dataPath, "a");
+    if (!dataFile) {
+        printf("Error: Could not open table '%s' for writing.\n", tableName);
+        return -1;
+    }
+
+    for (int i = 0; i < valueCount; i++) {
+        fprintf(dataFile, "%s,", tokens[i]);
+    }
+    fprintf(dataFile, "\n");
+    fclose(dataFile);
+
+
+    // Step 6: Write the values to the file
+    token = strtok(values, ",");
+    while (token) {
+        // Trim leading/trailing whitespace
+        while (*token == ' ') token++;
+        char* end = token + strlen(token) - 1;
+        while (*end == ' ') end--;
+        *(end + 1) = '\0';
+
+        // Write the value to the file
+        fprintf(dataFile, "%s,", token);
+        token = strtok(NULL, ",");
+    }
+    fprintf(dataFile, "\n"); // End the row
+    fclose(dataFile);
+
+    // Step 7: Update the row count in the metadata file
+    metaFile = fopen(metaPath, "r+");
+    if (!metaFile) {
+        printf("Error: Could not update metadata for table '%s'.\n", tableName);
+        return -1;
+    }
+
+    int rowCount = 0;
+    char metaContent[1000] = {0};
+    while (fgets(line, sizeof(line), metaFile)) {
+        if (strstr(line, "rowCount=")) {
+            sscanf(line, "rowCount=%d", &rowCount);
+            rowCount++;
+            sprintf(line, "rowCount=%d\n", rowCount);
+        }
+        strcat(metaContent, line);
+    }
+
+    // Rewrite the metadata file
+    fclose(metaFile);
+    metaFile = fopen(metaPath, "w");
+    fprintf(metaFile, "%s", metaContent);
+    fclose(metaFile);
+
+    printf("Inserted 1 row into table '%s'.\n", tableName);
+    return 0;
+}
+int _selector(char (*p)[WIDTH]) {
+    if (!_checkDB()) {
+        printf("Error: No database selected.\n");
+        return -1;
+    }
+
+    // Step 1: Parse the SELECT query
+    char tableName[30];
+    strcpy(tableName, p[3]); // Assuming query is "SELECT * FROM table;"
+
+    // Step 2: Read metadata to get columns
+    char metaPath[50];
+    snprintf(metaPath, sizeof(metaPath), "%s\\%s.meta", workingPath, tableName);
+
+    FILE* metaFile = fopen(metaPath, "r");
+    if (!metaFile) {
+        printf("Error: Table '%s' does not exist.\n", tableName);
+        return -1;
+    }
+
+    // Read column names and types
+    char columns[30][30];
+    char types[30][10];
+    int fieldCount = 0;
+    char line[100];
+
+    while (fgets(line, sizeof(line), metaFile)) {
+        if (strchr(line, ':')) {
+            char* colon = strchr(line, ':');
+            *colon = '\0';
+            strcpy(columns[fieldCount], line);
+            strcpy(types[fieldCount], colon + 1);
+            fieldCount++;
+        }
+
+    }
+
+    fclose(metaFile);
+
+    // Step 3: Determine columns to display
+    int displayAll = 0;
+    int displayColumns[30] = {0}; // 1 = display, 0 = skip
+
+    if (strcmp(p[1], "*") == 0) {
+        // Select all columns
+        displayAll = 1;
+        for (int i = 0; i < fieldCount; i++) displayColumns[i] = 1;
+    } else {
+        // Select specific columns (e.g., "SELECT name, age")
+        for (int i = 1; p[i][0] != '\0' && strcmp(p[i], "FROM") != 0; i++) {
+            for (int j = 0; j < fieldCount; j++) {
+                if (strcmp(p[i], columns[j]) == 0) {
+                    displayColumns[j] = 1;
+                    break;
+                }
+            }
         }
     }
 
+    // Step 4: Read data from the .txt file
+    char dataPath[50];
+    snprintf(dataPath, sizeof(dataPath), "%s\\%s.txt", workingPath, tableName);
 
+    FILE* dataFile = fopen(dataPath, "r");
+    if (!dataFile) {
+        printf("Error: Table '%s' has no data.\n", tableName);
+        return -1;
+    }
 
-    i=2;
-    j=0;
-    char *p1;
-    while(p[i][0]!='\0'){
-        if(_columnNormalizer(p[i],aboutTable.fieldCount)==NULL) {
-            printf("Error Number of fields do not match!\n");
+    // Step 5: Print formatted output
+    printf("\n");
+    // Print header
+    for (int i = 0; i < fieldCount; i++) {
+        if (displayAll || displayColumns[i]) {
+            printf("| %-15s ", columns[i]);
+        }
+    }
+    printf("|\n");
+
+    // Print separator
+    for (int i = 0; i < fieldCount; i++) {
+        if (displayAll || displayColumns[i]) {
+            printf("|-----------------");
+        }
+    }
+    printf("|\n");
+
+    // Print rows
+    char row[500];
+    while (fgets(row, sizeof(row), dataFile)) {
+        char* token = strtok(row, ",");
+        int colIdx = 0;
+
+        while (token) {
+            // Trim whitespace/newline
+            char* end = token + strlen(token) - 1;
+            while (*end == ' ' || *end == '\n') end--;
+            *(end + 1) = '\0';
+
+            if (displayAll || displayColumns[colIdx]) {
+                printf("| %-15s ", token);
+            }
+            token = strtok(NULL, ",");
+            colIdx++;
+        }
+        printf("|\n");
+    }
+
+    fclose(dataFile);
+    return 0;
+}
+int _deleter(char (*p)[WIDTH]) {
+    if (!_checkDB()) {
+        printf("Please open a database first!\n");
+        return -1;
+    }
+
+    // Step 1: Extract table name
+    char tableName[30];
+    strcpy(tableName, p[1]); // Table name is in p[1]
+
+    // Step 2: Check if table exists
+    char dataPath[50], metaPath[50];
+    snprintf(dataPath, sizeof(dataPath), "%s\\%s.txt", workingPath, tableName);
+    snprintf(metaPath, sizeof(metaPath), "%s\\%s.meta", workingPath, tableName);
+
+    FILE* dataFile = fopen(dataPath, "r");
+    if (!dataFile) {
+        printf("Error: Table '%s' does not exist.\n", tableName);
+        return -1;
+    }
+
+    // Step 3: Read the condition (DELETE tableName WHERE column=value)
+    if (strcmp(strupr(p[2]), "WHERE") != 0) {
+        printf("Error: Expected 'WHERE' clause.\n");
+        fclose(dataFile);
+        return -1;
+    }
+
+    char columnToMatch[30], valueToMatch[30];
+    strcpy(columnToMatch, p[3]); // Column name
+    strcpy(valueToMatch, p[5]);  // Value (assuming simple format column=value)
+
+    // Step 4: Read table metadata to find column index
+    FILE* metaFile = fopen(metaPath, "r");
+    if (!metaFile) {
+        printf("Error: Could not read metadata for '%s'.\n", tableName);
+        fclose(dataFile);
+        return -1;
+    }
+
+    int fieldCount = 0, rowCount = 0, columnIndex = -1;
+    char columnNames[30][30], columnTypes[30][10];
+    char line[100];
+
+    while (fgets(line, sizeof(line), metaFile)) {
+        if (strstr(line, "rowCount=")) {
+            sscanf(line, "rowCount=%d", &rowCount);
+        } else if (strchr(line, ':')) {
+            char* colon = strchr(line, ':');
+            *colon = '\0';
+            strcpy(columnNames[fieldCount], line);
+            strcpy(columnTypes[fieldCount], colon + 1);
+            if (strcmp(columnNames[fieldCount], columnToMatch) == 0) {
+                columnIndex = fieldCount;
+            }
+            fieldCount++;
+        }
+    }
+    fclose(metaFile);
+
+    if (columnIndex == -1) {
+        printf("Error: Column '%s' not found in table '%s'.\n", columnToMatch, tableName);
+        fclose(dataFile);
+        return -1;
+    }
+
+    // Step 5: Read all rows and filter out the ones matching the condition
+
+    FILE* tempFile = fopen("temp.txt", "w");
+    if (!tempFile) {
+        printf("Error: Could not create temp file.\n");
+        fclose(dataFile);
+        return -1;
+    }
+
+    int deletedRows = 0;
+    while (fgets(line, sizeof(line), dataFile)) {
+        char* tokens[30] = {0};
+        int tokenIndex = 0;
+        char* token = strtok(line, ",");
+        while (token) {
+            tokens[tokenIndex++] = token;
+            token = strtok(NULL, ",");
+        }
+        // Compare value in the specified column
+        if (strcmp(tokens[columnIndex], valueToMatch) == 0) {
+            deletedRows++;
+            continue; // Skip this row (delete it)
+        }
+        // Write back rows that are not deleted
+        for (int i = 0; i < tokenIndex; i++){
+        if(((i+1)%(fieldCount+1))==0){
+            fprintf(tempFile,"\n");
+            continue;//VVIMP LINE
+        }
+            fprintf(tempFile, "%s,", tokens[i]);
+        }
+    }
+
+    fclose(dataFile);
+    fclose(tempFile);
+
+    // Replace original file with temp file
+    remove(dataPath);
+    rename("temp.txt", dataPath);
+    // Step 6: Update row count in metadata
+    if (deletedRows > 0) {
+        rowCount -= deletedRows;
+        metaFile = fopen(metaPath, "r+");
+        if (!metaFile) {
+            printf("Error: Could not update metadata.\n");
             return -1;
         }
-        (*p1)[30]=_columnNormalizer(p[i],aboutTable.fieldCount);
-        i++;
-    for(j=0;j<aboutTable.fieldCount;j++){
-        for(k=0;k<countInserts;k++){
-            aboutTable.pColumns[j].value=
+
+        char metaContent[1000] = {0};
+        while (fgets(line, sizeof(line), metaFile)) {
+            if (strstr(line, "rowCount=")) {
+                sprintf(line, "rowCount=%d\n", rowCount);
+            }
+            strcat(metaContent, line);
         }
-    }
-    }
 
-    //BHAYO MERO DIMAG NAI CHALENA AABA BHOLI GARXU 'Face with Symbols on Mouth' emoji
+        fclose(metaFile);
+        metaFile = fopen(metaPath, "w");
+        fprintf(metaFile, "%s", metaContent);
+        fclose(metaFile);
+    }
+    printf("Deleted %d row(s) from table '%s'.\n", deletedRows, tableName);
+    return 0;
 }
-
-
-
-////int _columnNormalizer_i,_columnNormalizer_k=0,_columnNormalizer_switch=0;
-////aboutTable.fieldCount=columnCount;
-////aboutTable.pColumns = (struct aboutColumns*) calloc(aboutTable.fieldCount,sizeof(struct aboutColumns));
-////for(_columnNormalizer_i=0;_columnNormalizer_i<strlen(p);i++){
-////    if(p[_columnNormalizer_i]=='('||p[_columnNormalizer_i]==')'){
-////        continue;
-////    }
-////    if(p[_columnNormalizer_i]==':'){
-////        _columnNormalizer_switch+=1;
-////        continue;
-////    }
-////    if(p[_columnNormalizer_i]==','){
-////        _columnNormalizer_switch-=1;
-////        continue;
-////    }
-////    aboutTable.pColumns[k]
-////}
-////
-
-
-
-
-//FILE *_creator_f;
-//if(fopen("HELLO.txt","r")){
-//    printf("ERROR! FILE ALREADY EXISTS!");
-//    return;
-//}
-//_creator_f = fopen("HELLO.txt","w");
-//if(_creator_f){
-//   printf("File successfully Created");
-//   }
-//   else{
-//    printf("An error Occurred! File could not be created");
-//   }
-//fclose(_creator_f);
-//}
